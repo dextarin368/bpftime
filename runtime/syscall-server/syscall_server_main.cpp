@@ -13,6 +13,7 @@
 #include <cstdio>
 #if __linux__
 #include "linux/bpf.h"
+#include <syslog.h>
 #include <asm-generic/errno-base.h>
 #endif
 #include <cstdlib>
@@ -45,6 +46,7 @@ union syscall_server_ctx_union {
 	}
 	syscall_server_ctx_union()
 	{
+		syslog(LOG_INFO | LOG_USER, "DMJ syscall_server_ctx_union created");
 	}
 	~syscall_server_ctx_union()
 	{
@@ -52,8 +54,9 @@ union syscall_server_ctx_union {
 };
 static syscall_server_ctx_union context;
 static int ctx_initialized = 0;
-static void initialize_ctx()
+static void initialize_ctx(const std::string& caller)
 {
+	syslog(LOG_INFO | LOG_USER, caller.c_str());
 	int expected = 0;
 	if (__atomic_compare_exchange_n(&ctx_initialized, &expected, 1, false,
 					__ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
@@ -79,7 +82,7 @@ auto handle_exceptions(F &&f, Args &&...args) noexcept
 extern "C" int epoll_wait(int epfd, epoll_event *evt, int maxevents,
 			  int timeout)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ epoll_wait");
 	safe_spdlog_debug("epoll_wait {}", epfd);
 	return handle_exceptions([&]() {
 		return context->handle_epoll_wait(epfd, evt, maxevents,
@@ -89,7 +92,7 @@ extern "C" int epoll_wait(int epfd, epoll_event *evt, int maxevents,
 
 extern "C" int epoll_ctl(int epfd, int op, int fd, epoll_event *evt)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ epoll_ctl");
 	safe_spdlog_debug("epoll_ctl {} {} {} {}", epfd, op, fd, (uintptr_t)evt);
 	return handle_exceptions(
 		[&]() { return context->handle_epoll_ctl(epfd, op, fd, evt); });
@@ -97,7 +100,7 @@ extern "C" int epoll_ctl(int epfd, int op, int fd, epoll_event *evt)
 
 extern "C" int epoll_create1(int flags)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ epoll_create1");
 	safe_spdlog_debug("epoll_create1 {}", flags);
 	return handle_exceptions(
 		[&]() { return context->handle_epoll_create1(flags); });
@@ -105,7 +108,7 @@ extern "C" int epoll_create1(int flags)
 
 extern "C" int ioctl(int fd, unsigned long req, ...)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ ioctl");
 	va_list args;
 	va_start(args, req);
 	unsigned long arg3 = va_arg(args, long);
@@ -118,7 +121,7 @@ extern "C" int ioctl(int fd, unsigned long req, ...)
 extern "C" void *mmap64(void *addr, size_t length, int prot, int flags, int fd,
 			off64_t offset)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ mmap64");
 	safe_spdlog_debug("mmap64 {:x}", (uintptr_t)addr);
 	return handle_exceptions([&]() {
 		return context->handle_mmap64(addr, length, prot, flags, fd,
@@ -129,7 +132,7 @@ extern "C" void *mmap64(void *addr, size_t length, int prot, int flags, int fd,
 extern "C" void *mmap(void *addr, size_t length, int prot, int flags, int fd,
 		      off_t offset)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ mmap");
 	safe_spdlog_debug("mmap {:x}", (uintptr_t)addr);
 	return handle_exceptions([&]() {
 		return context->handle_mmap(addr, length, prot, flags, fd,
@@ -139,7 +142,7 @@ extern "C" void *mmap(void *addr, size_t length, int prot, int flags, int fd,
 
 extern "C" int munmap(void *addr, size_t size)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ munmap");
 	safe_spdlog_debug("munmap {:x} {}", (uintptr_t)addr, size);
 	return handle_exceptions(
 		[&]() { return context->handle_munmap(addr, size); });
@@ -147,14 +150,14 @@ extern "C" int munmap(void *addr, size_t size)
 
 extern "C" int close(int fd)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ close");
 	safe_spdlog_debug("Closing fd {}", fd);
 	return handle_exceptions([&]() { return context->handle_close(fd); });
 }
 
 extern "C" int openat(int fd, const char *file, int oflag, ...)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ openat");
 	va_list args;
 	va_start(args, oflag);
 	long arg4 = va_arg(args, long);
@@ -165,7 +168,7 @@ extern "C" int openat(int fd, const char *file, int oflag, ...)
 }
 extern "C" int open(const char *file, int oflag, ...)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ open");
 	va_list args;
 	va_start(args, oflag);
 	long arg3 = va_arg(args, long);
@@ -176,32 +179,32 @@ extern "C" int open(const char *file, int oflag, ...)
 }
 extern "C" ssize_t read(int fd, void *buf, size_t count)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ read");
 	return context->handle_read(fd, buf, count);
 }
 
 extern "C" FILE *fopen(const char *pathname, const char *flags)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ fopen");
 	safe_spdlog_debug("fopen {} {}", safe_ptr_str(pathname), safe_ptr_str(flags));
 	return context->handle_fopen(pathname, flags);
 }
 extern "C" FILE *fopen64(const char *pathname, const char *flags)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ fopen64");
 	safe_spdlog_debug("fopen64 {} {}", safe_ptr_str(pathname), safe_ptr_str(flags));
 	return context->handle_fopen(pathname, flags);
 }
 extern "C" FILE *_IO_new_fopen(const char *pathname, const char *flags)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ _IO_new_fopen");
 	safe_spdlog_debug("_IO_new_fopen {} {}", safe_ptr_str(pathname), safe_ptr_str(flags));
 	return context->handle_fopen(pathname, flags);
 }
 #if __linux__
 extern "C" long syscall(long sysno, ...)
 {
-	initialize_ctx();
+	initialize_ctx("DMJ syscall");
 	// glibc directly reads the arguments without considering
 	// the underlying argument number. So did us
 	va_list args;
