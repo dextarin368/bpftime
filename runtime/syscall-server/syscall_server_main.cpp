@@ -55,7 +55,7 @@ static syscall_server_ctx_union context;
 static int ctx_initialized = 0;
 static void initialize_ctx(const std::string& caller)
 {
-	SPDLOG_INFO(caller.c_str();
+	SPDLOG_INFO(caller.c_str());
 	int expected = 0;
 	if (__atomic_compare_exchange_n(&ctx_initialized, &expected, 1, false,
 					__ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
